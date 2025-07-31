@@ -211,6 +211,10 @@
                 <input type="number" id="maxFreq" value="4000" min="2000" max="8000">
             </div>
             <div class="setting-item">
+                <label>Threshold:</label>
+                <input type="number" id="threshold" value="150" min="50" max="300" step="10">
+            </div>
+            <div class="setting-item">
                 <label>Debounce Time (sec):</label>
                 <input type="number" id="debounceTime" value="3" min="1" max="10" step="0.5">
             </div>
@@ -370,6 +374,8 @@
             whistleCount = 0;
             counter.textContent = whistleCount;
             lastWhistleTime = 0;
+            isCurrentlyWhistling = false;
+            whistleStartTime = 0;
         }
 
         function analyzeAudio() {
@@ -377,9 +383,12 @@
             
             analyser.getByteFrequencyData(dataArray);
             
-            const minFreq = parseInt(document.getElementById('minFreq').value);
-            const maxFreq = parseInt(document.getElementById('maxFreq').value);
-            const threshold = parseInt(document.getElementById('threshold').value);
+            // Get settings with fallback values
+            const minFreq = parseInt(document.getElementById('minFreq')?.value || '2000');
+            const maxFreq = parseInt(document.getElementById('maxFreq')?.value || '4000');
+            const threshold = parseInt(document.getElementById('threshold')?.value || '150');
+            const debounceTime = parseFloat(document.getElementById('debounceTime')?.value || '3') * 1000;
+            const minDuration = parseInt(document.getElementById('minDuration')?.value || '500');
             
             // Calculate frequency bins
             const nyquist = audioContext.sampleRate / 2;
@@ -403,24 +412,53 @@
             frequencyLevel.style.width = frequencyPercent + '%';
             frequencyText.textContent = Math.round(peakFrequency) + ' Hz';
             
-            // Detect whistle
             const currentTime = Date.now();
-            if (maxAmplitude > threshold && (currentTime - lastWhistleTime) > whistleDebounce) {
-                whistleCount++;
-                counter.textContent = whistleCount;
-                lastWhistleTime = currentTime;
-                
-                // Visual feedback
-                indicator.classList.add('active');
-                status.textContent = `Whistle detected! (${Math.round(peakFrequency)} Hz)`;
-                
-                // Remove active state after animation
-                setTimeout(() => {
-                    indicator.classList.remove('active');
-                    if (isDetecting) {
+            const isWhistleDetected = maxAmplitude > threshold;
+            
+            if (isWhistleDetected) {
+                if (!isCurrentlyWhistling) {
+                    // Start of a potential whistle
+                    isCurrentlyWhistling = true;
+                    whistleStartTime = currentTime;
+                    status.textContent = `Potential whistle detected... (${Math.round(peakFrequency)} Hz)`;
+                } else {
+                    // Continuing whistle - check if it's been long enough and not too recent
+                    const whistleDuration = currentTime - whistleStartTime;
+                    const timeSinceLastCount = currentTime - lastWhistleTime;
+                    
+                    if (whistleDuration >= minDuration && timeSinceLastCount >= debounceTime) {
+                        // Count this as a valid whistle
+                        whistleCount++;
+                        counter.textContent = whistleCount;
+                        lastWhistleTime = currentTime;
+                        
+                        // Visual feedback
+                        indicator.classList.add('active');
+                        status.textContent = `✅ Whistle #${whistleCount} counted! (${Math.round(peakFrequency)} Hz, ${Math.round(whistleDuration)}ms)`;
+                        
+                        // Remove active state after animation
+                        setTimeout(() => {
+                            indicator.classList.remove('active');
+                        }, 1000);
+                    }
+                }
+            } else {
+                if (isCurrentlyWhistling) {
+                    // End of whistle
+                    const whistleDuration = currentTime - whistleStartTime;
+                    isCurrentlyWhistling = false;
+                    
+                    if (whistleDuration < minDuration) {
+                        status.textContent = `Whistle too short (${Math.round(whistleDuration)}ms) - ignored`;
+                        setTimeout(() => {
+                            if (isDetecting && !isCurrentlyWhistling) {
+                                status.textContent = "Listening for whistles...";
+                            }
+                        }, 1500);
+                    } else if (isDetecting) {
                         status.textContent = "Listening for whistles...";
                     }
-                }, 500);
+                }
             }
             
             animationId = requestAnimationFrame(analyzeAudio);
