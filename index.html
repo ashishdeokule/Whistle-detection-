@@ -155,6 +155,16 @@
             color: white;
             width: 80px;
         }
+
+        .help-text {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 15px;
+            margin: 15px 0;
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 0.9rem;
+            text-align: left;
+        }
     </style>
 </head>
 <body>
@@ -215,12 +225,20 @@
                 <input type="number" id="threshold" value="150" min="50" max="300" step="10">
             </div>
             <div class="setting-item">
-                <label>Debounce Time (sec):</label>
-                <input type="number" id="debounceTime" value="3" min="1" max="10" step="0.5">
-            </div>
-            <div class="setting-item">
                 <label>Min Whistle Duration (ms):</label>
                 <input type="number" id="minDuration" value="500" min="100" max="2000" step="100">
+            </div>
+            <div class="setting-item">
+                <label>Silence Gap Required (sec):</label>
+                <input type="number" id="silenceGap" value="2" min="0.5" max="10" step="0.5">
+            </div>
+            
+            <div class="help-text">
+                <strong>📝 Settings Help:</strong><br>
+                • <strong>Min/Max Frequency:</strong> Range where whistles are detected<br>
+                • <strong>Threshold:</strong> How loud the whistle needs to be (50-300)<br>
+                • <strong>Min Duration:</strong> How long whistle must last to count<br>
+                • <strong>Silence Gap:</strong> Minimum silence needed between separate whistles
             </div>
         </div>
     </div>
@@ -233,11 +251,12 @@
         let animationId;
         let whistleCount = 0;
         let isDetecting = false;
-        let lastWhistleTime = 0;
-        let whistleDebounce = 3000; // 3 second debounce for continuous whistles
+        
+        // Fixed whistle detection variables
         let isCurrentlyWhistling = false;
         let whistleStartTime = 0;
-        let continuousWhistleThreshold = 500; // 0.5 seconds to confirm it's a real whistle
+        let lastWhistleEndTime = 0;
+        let whistleAlreadyCounted = false;
 
         const counter = document.getElementById('counter');
         const status = document.getElementById('status');
@@ -256,40 +275,24 @@
         }
 
         async function requestPermissionAndStart() {
-            // First, try to get permission more explicitly
             try {
                 status.textContent = "🎤 Click 'Allow' when your browser asks for microphone permission...";
-                
-                // Force a user interaction to help with permission request
                 await new Promise(resolve => setTimeout(resolve, 500));
-                
                 await startDetection();
             } catch (error) {
                 showPermissionHelp();
             }
         }
 
-        async function checkMicrophonePermission() {
-            try {
-                const result = await navigator.permissions.query({ name: 'microphone' });
-                return result.state;
-            } catch (error) {
-                return 'unknown';
-            }
-        }
-
         async function startDetection() {
             try {
-                // Show requesting permission status
                 status.textContent = "Requesting microphone permission...";
                 startBtn.disabled = true;
                 
-                // Check if getUserMedia is supported
                 if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                     throw new Error('getUserMedia not supported in this browser');
                 }
                 
-                // Request microphone access with more explicit approach
                 const stream = await navigator.mediaDevices.getUserMedia({ 
                     audio: {
                         echoCancellation: false,
@@ -299,24 +302,19 @@
                     } 
                 });
                 
-                // Create audio context
                 audioContext = new (window.AudioContext || window.webkitAudioContext)();
                 
-                // Resume audio context if suspended (Chrome requirement)
                 if (audioContext.state === 'suspended') {
                     await audioContext.resume();
                 }
                 
-                // Create analyser
                 analyser = audioContext.createAnalyser();
                 analyser.fftSize = 2048;
                 analyser.smoothingTimeConstant = 0.3;
                 
-                // Connect microphone to analyser
                 microphone = audioContext.createMediaStreamSource(stream);
                 microphone.connect(analyser);
                 
-                // Create data array
                 dataArray = new Uint8Array(analyser.frequencyBinCount);
                 
                 isDetecting = true;
@@ -324,14 +322,12 @@
                 startBtn.disabled = true;
                 stopBtn.disabled = false;
                 
-                // Start analysis loop
                 analyzeAudio();
                 
             } catch (error) {
                 console.error('Error accessing microphone:', error);
                 startBtn.disabled = false;
                 
-                // Provide specific error messages and help
                 if (error.name === 'NotAllowedError') {
                     status.innerHTML = `
                         ❌ Microphone permission denied.<br>
@@ -373,9 +369,10 @@
         function resetCounter() {
             whistleCount = 0;
             counter.textContent = whistleCount;
-            lastWhistleTime = 0;
             isCurrentlyWhistling = false;
             whistleStartTime = 0;
+            lastWhistleEndTime = 0;
+            whistleAlreadyCounted = false;
         }
 
         function analyzeAudio() {
@@ -387,8 +384,8 @@
             const minFreq = parseInt(document.getElementById('minFreq')?.value || '2000');
             const maxFreq = parseInt(document.getElementById('maxFreq')?.value || '4000');
             const threshold = parseInt(document.getElementById('threshold')?.value || '150');
-            const debounceTime = parseFloat(document.getElementById('debounceTime')?.value || '3') * 1000;
             const minDuration = parseInt(document.getElementById('minDuration')?.value || '500');
+            const silenceGap = parseFloat(document.getElementById('silenceGap')?.value || '2') * 1000;
             
             // Calculate frequency bins
             const nyquist = audioContext.sampleRate / 2;
@@ -417,29 +414,41 @@
             
             if (isWhistleDetected) {
                 if (!isCurrentlyWhistling) {
-                    // Start of a potential whistle
-                    isCurrentlyWhistling = true;
-                    whistleStartTime = currentTime;
-                    status.textContent = `Potential whistle detected... (${Math.round(peakFrequency)} Hz)`;
-                } else {
-                    // Continuing whistle - check if it's been long enough and not too recent
-                    const whistleDuration = currentTime - whistleStartTime;
-                    const timeSinceLastCount = currentTime - lastWhistleTime;
+                    // Check if enough silence has passed since the last whistle ended
+                    const timeSinceLastWhistle = currentTime - lastWhistleEndTime;
                     
-                    if (whistleDuration >= minDuration && timeSinceLastCount >= debounceTime) {
-                        // Count this as a valid whistle
+                    if (timeSinceLastWhistle >= silenceGap || lastWhistleEndTime === 0) {
+                        // Start of a new whistle
+                        isCurrentlyWhistling = true;
+                        whistleStartTime = currentTime;
+                        whistleAlreadyCounted = false;
+                        status.textContent = `New whistle detected... (${Math.round(peakFrequency)} Hz)`;
+                    } else {
+                        // Too soon after last whistle - ignore
+                        status.textContent = `Whistle ignored - too soon after previous (${Math.round(timeSinceLastWhistle/1000, 1)}s gap needed)`;
+                    }
+                } else {
+                    // Continuing whistle - check if it should be counted
+                    const whistleDuration = currentTime - whistleStartTime;
+                    
+                    if (!whistleAlreadyCounted && whistleDuration >= minDuration) {
+                        // Count this whistle (only once per continuous whistle)
                         whistleCount++;
                         counter.textContent = whistleCount;
-                        lastWhistleTime = currentTime;
+                        whistleAlreadyCounted = true;
                         
                         // Visual feedback
                         indicator.classList.add('active');
-                        status.textContent = `✅ Whistle #${whistleCount} counted! (${Math.round(peakFrequency)} Hz, ${Math.round(whistleDuration)}ms)`;
+                        status.textContent = `✅ Whistle #${whistleCount} counted! (${Math.round(peakFrequency)} Hz, ${Math.round(whistleDuration)}ms duration)`;
                         
                         // Remove active state after animation
                         setTimeout(() => {
                             indicator.classList.remove('active');
                         }, 1000);
+                    } else if (whistleAlreadyCounted) {
+                        // Show ongoing whistle status
+                        const whistleDuration = currentTime - whistleStartTime;
+                        status.textContent = `Ongoing whistle... (${Math.round(whistleDuration/1000, 1)}s so far, already counted)`;
                     }
                 }
             } else {
@@ -447,14 +456,22 @@
                     // End of whistle
                     const whistleDuration = currentTime - whistleStartTime;
                     isCurrentlyWhistling = false;
+                    lastWhistleEndTime = currentTime;
                     
-                    if (whistleDuration < minDuration) {
+                    if (!whistleAlreadyCounted && whistleDuration < minDuration) {
                         status.textContent = `Whistle too short (${Math.round(whistleDuration)}ms) - ignored`;
                         setTimeout(() => {
                             if (isDetecting && !isCurrentlyWhistling) {
                                 status.textContent = "Listening for whistles...";
                             }
                         }, 1500);
+                    } else if (whistleAlreadyCounted) {
+                        status.textContent = `Whistle ended (${Math.round(whistleDuration/1000, 1)}s total). Waiting ${Math.round(silenceGap/1000, 1)}s before next count...`;
+                        setTimeout(() => {
+                            if (isDetecting && !isCurrentlyWhistling) {
+                                status.textContent = "Listening for whistles...";
+                            }
+                        }, 2000);
                     } else if (isDetecting) {
                         status.textContent = "Listening for whistles...";
                     }
