@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Whistle Detection Counter</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 40px;
+            text-align: center;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            max-width: 500px;
+            width: 100%;
+        }
+        
+        h1 {
+            color: white;
+            margin-bottom: 30px;
+            font-size: 2.5rem;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+        
+        .counter {
+            font-size: 4rem;
+            font-weight: bold;
+            color: #fff;
+            margin: 30px 0;
+            text-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+        }
+        
+        .status {
+            font-size: 1.2rem;
+            color: rgba(255, 255, 255, 0.8);
+            margin: 20px 0;
+            min-height: 30px;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin: 30px 0;
+        }
+        
+        button {
+            background: linear-gradient(45deg, #4facfe 0%, #00f2fe 100%);
+            border: none;
+            padding: 15px 30px;
+            border-radius: 25px;
+            color: white;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+        }
+        
+        button:disabled {
+            background: rgba(255, 255, 255, 0.2);
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .stop-btn {
+            background: linear-gradient(45deg, #ff6b6b 0%, #ee5a52 100%);
+        }
+        
+        .reset-btn {
+            background: linear-gradient(45deg, #feca57 0%, #ff9ff3 100%);
+        }
+        
+        .frequency-display {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            color: white;
+        }
+        
+        .frequency-bar {
+            width: 100%;
+            height: 100px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+            margin: 10px 0;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .frequency-level {
+            height: 100%;
+            background: linear-gradient(to top, #4facfe, #00f2fe);
+            width: 0%;
+            transition: width 0.1s ease;
+            border-radius: 10px;
+        }
+        
+        .detection-indicator {
+            width: 20px;
+            height: 20px;
+            background: #ff6b6b;
+            border-radius: 50%;
+            margin: 0 auto 20px;
+            transition: all 0.3s ease;
+        }
+        
+        .detection-indicator.active {
+            background: #4facfe;
+            box-shadow: 0 0 20px #4facfe;
+            transform: scale(1.2);
+        }
+        
+        .settings {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            text-align: left;
+        }
+        
+        .setting-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 15px 0;
+            color: white;
+        }
+        
+        .setting-item input {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            padding: 5px 10px;
+            border-radius: 5px;
+            color: white;
+            width: 80px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎵 Whistle Counter</h1>
+        
+        <div class="detection-indicator" id="indicator"></div>
+        
+        <div class="counter" id="counter">0</div>
+        
+        <div class="status" id="status">Click "Start Detection" to begin</div>
+        
+        <div class="controls">
+            <button id="startBtn" onclick="requestPermissionAndStart()">🎤 Start Detection</button>
+            <button id="stopBtn" onclick="stopDetection()" class="stop-btn" disabled>Stop Detection</button>
+            <button onclick="resetCounter()" class="reset-btn">Reset Counter</button>
+        </div>
+        
+        <div class="permission-help" id="permissionHelp" style="display: none;">
+            <div style="background: rgba(255, 255, 255, 0.1); border-radius: 10px; padding: 20px; margin: 20px 0; color: white;">
+                <h3>🔧 Microphone Permission Required</h3>
+                <p><strong>For Chrome/Edge:</strong></p>
+                <ol style="text-align: left; padding-left: 20px;">
+                    <li>Look for a microphone icon in the address bar</li>
+                    <li>Click it and select "Always allow"</li>
+                    <li>Refresh the page and try again</li>
+                </ol>
+                <p><strong>Alternative:</strong></p>
+                <ol style="text-align: left; padding-left: 20px;">
+                    <li>Click the lock icon next to the URL</li>
+                    <li>Set "Microphone" to "Allow"</li>
+                    <li>Refresh and try again</li>
+                </ol>
+                <button onclick="hidePermissionHelp()" style="margin-top: 10px;">Got it!</button>
+            </div>
+        </div>
+        
+        <div class="frequency-display">
+            <div>Frequency Level</div>
+            <div class="frequency-bar">
+                <div class="frequency-level" id="frequencyLevel"></div>
+            </div>
+            <div id="frequencyText">0 Hz</div>
+        </div>
+        
+        <div class="settings">
+            <h3 style="color: white; margin-top: 0;">Detection Settings</h3>
+            <div class="setting-item">
+                <label>Min Frequency (Hz):</label>
+                <input type="number" id="minFreq" value="2000" min="1000" max="4000">
+            </div>
+            <div class="setting-item">
+                <label>Max Frequency (Hz):</label>
+                <input type="number" id="maxFreq" value="4000" min="2000" max="8000">
+            </div>
+            <div class="setting-item">
+                <label>Threshold:</label>
+                <input type="number" id="threshold" value="150" min="50" max="300" step="10">
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let audioContext;
+        let analyser;
+        let microphone;
+        let dataArray;
+        let animationId;
+        let whistleCount = 0;
+        let isDetecting = false;
+        let lastWhistleTime = 0;
+        let whistleDebounce = 1000; // 1 second debounce
+
+        const counter = document.getElementById('counter');
+        const status = document.getElementById('status');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const indicator = document.getElementById('indicator');
+        const frequencyLevel = document.getElementById('frequencyLevel');
+        const frequencyText = document.getElementById('frequencyText');
+
+        function showPermissionHelp() {
+            document.getElementById('permissionHelp').style.display = 'block';
+        }
+
+        function hidePermissionHelp() {
+            document.getElementById('permissionHelp').style.display = 'none';
+        }
+
+        async function requestPermissionAndStart() {
+            // First, try to get permission more explicitly
+            try {
+                status.textContent = "🎤 Click 'Allow' when your browser asks for microphone permission...";
+                
+                // Force a user interaction to help with permission request
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                await startDetection();
+            } catch (error) {
+                showPermissionHelp();
+            }
+        }
+
+        async function checkMicrophonePermission() {
+            try {
+                const result = await navigator.permissions.query({ name: 'microphone' });
+                return result.state;
+            } catch (error) {
+                return 'unknown';
+            }
+        }
+
+        async function startDetection() {
+            try {
+                // Show requesting permission status
+                status.textContent = "Requesting microphone permission...";
+                startBtn.disabled = true;
+                
+                // Check if getUserMedia is supported
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    throw new Error('getUserMedia not supported in this browser');
+                }
+                
+                // Request microphone access with more explicit approach
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: {
+                        echoCancellation: false,
+                        noiseSuppression: false,
+                        autoGainControl: false,
+                        sampleRate: 44100
+                    } 
+                });
+                
+                // Create audio context
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                
+                // Resume audio context if suspended (Chrome requirement)
+                if (audioContext.state === 'suspended') {
+                    await audioContext.resume();
+                }
+                
+                // Create analyser
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 2048;
+                analyser.smoothingTimeConstant = 0.3;
+                
+                // Connect microphone to analyser
+                microphone = audioContext.createMediaStreamSource(stream);
+                microphone.connect(analyser);
+                
+                // Create data array
+                dataArray = new Uint8Array(analyser.frequencyBinCount);
+                
+                isDetecting = true;
+                status.textContent = "✅ Microphone access granted! Listening for whistles...";
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                
+                // Start analysis loop
+                analyzeAudio();
+                
+            } catch (error) {
+                console.error('Error accessing microphone:', error);
+                startBtn.disabled = false;
+                
+                // Provide specific error messages and help
+                if (error.name === 'NotAllowedError') {
+                    status.innerHTML = `
+                        ❌ Microphone permission denied.<br>
+                        <small>Your browser blocked microphone access. See instructions below.</small>
+                    `;
+                    showPermissionHelp();
+                } else if (error.name === 'NotFoundError') {
+                    status.textContent = "❌ No microphone found. Please connect a microphone and try again.";
+                } else if (error.name === 'NotReadableError') {
+                    status.textContent = "❌ Microphone is being used by another application. Please close other apps and try again.";
+                } else if (error.message.includes('getUserMedia not supported')) {
+                    status.textContent = "❌ Your browser doesn't support microphone access. Please use Chrome, Firefox, Safari, or Edge.";
+                } else {
+                    status.textContent = `❌ Error: ${error.message}`;
+                    showPermissionHelp();
+                }
+            }
+        }
+
+        function stopDetection() {
+            isDetecting = false;
+            
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+            }
+            
+            if (audioContext) {
+                audioContext.close();
+            }
+            
+            status.textContent = "Detection stopped";
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            indicator.classList.remove('active');
+            frequencyLevel.style.width = '0%';
+            frequencyText.textContent = '0 Hz';
+        }
+
+        function resetCounter() {
+            whistleCount = 0;
+            counter.textContent = whistleCount;
+            lastWhistleTime = 0;
+        }
+
+        function analyzeAudio() {
+            if (!isDetecting) return;
+            
+            analyser.getByteFrequencyData(dataArray);
+            
+            const minFreq = parseInt(document.getElementById('minFreq').value);
+            const maxFreq = parseInt(document.getElementById('maxFreq').value);
+            const threshold = parseInt(document.getElementById('threshold').value);
+            
+            // Calculate frequency bins
+            const nyquist = audioContext.sampleRate / 2;
+            const binSize = nyquist / analyser.frequencyBinCount;
+            const minBin = Math.floor(minFreq / binSize);
+            const maxBin = Math.floor(maxFreq / binSize);
+            
+            // Find peak in whistle frequency range
+            let maxAmplitude = 0;
+            let peakFrequency = 0;
+            
+            for (let i = minBin; i < maxBin && i < dataArray.length; i++) {
+                if (dataArray[i] > maxAmplitude) {
+                    maxAmplitude = dataArray[i];
+                    peakFrequency = i * binSize;
+                }
+            }
+            
+            // Update frequency display
+            const frequencyPercent = Math.min(100, (maxAmplitude / 255) * 100);
+            frequencyLevel.style.width = frequencyPercent + '%';
+            frequencyText.textContent = Math.round(peakFrequency) + ' Hz';
+            
+            // Detect whistle
+            const currentTime = Date.now();
+            if (maxAmplitude > threshold && (currentTime - lastWhistleTime) > whistleDebounce) {
+                whistleCount++;
+                counter.textContent = whistleCount;
+                lastWhistleTime = currentTime;
+                
+                // Visual feedback
+                indicator.classList.add('active');
+                status.textContent = `Whistle detected! (${Math.round(peakFrequency)} Hz)`;
+                
+                // Remove active state after animation
+                setTimeout(() => {
+                    indicator.classList.remove('active');
+                    if (isDetecting) {
+                        status.textContent = "Listening for whistles...";
+                    }
+                }, 500);
+            }
+            
+            animationId = requestAnimationFrame(analyzeAudio);
+        }
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', stopDetection);
+    </script>
+</body>
+              </html>
